@@ -1,57 +1,54 @@
-name: Dependabot Alert to Slack
+name: Notify All Dependabot Alerts to Slack
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 * * * *'  # every hour
 
 jobs:
   notify:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Fetch Dependabot Alerts
-        run: |
-          curl -s -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-               -H "Accept: application/vnd.github+json" \
-               https://api.github.com/repos/${{ github.repository }}/dependabot/alerts \
-               > alerts.json
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-          echo "ALERT_COUNT=$(jq length alerts.json)" >> $GITHUB_ENV
-          echo "PACKAGE=$(jq -r '.[0].dependency.package.name' alerts.json)" >> $GITHUB_ENV
-          echo "SEVERITY=$(jq -r '.[0].security_advisory.severity' alerts.json)" >> $GITHUB_ENV
-          echo "SUMMARY=$(jq -r '.[0].security_advisory.summary' alerts.json)" >> $GITHUB_ENV
-          echo "URL=$(jq -r '.[0].html_url' alerts.json)" >> $GITHUB_ENV
+    - name: Get Dependabot alerts
+      env:
+        GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      run: |
+        curl -s -H "Authorization: token $GH_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/repos/${{ github.repository }}/dependabot/alerts \
+          -o alerts.json
 
-      - name: Send Slack Notification
-        uses: slackapi/slack-github-action@v1.25.0
-        with:
-          payload: |
+    - name: Loop through all alerts and send Slack messages
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        jq -c '.[]' alerts.json | while read -r alert; do
+          PACKAGE=$(echo "$alert" | jq -r '.dependency.package.name')
+          SEVERITY=$(echo "$alert" | jq -r '.security_advisory.severity')
+          SUMMARY=$(echo "$alert" | jq -r '.security_advisory.summary')
+          URL=$(echo "$alert" | jq -r '.html_url')
+
+          payload=$(jq -n --arg package "$PACKAGE" --arg severity "$SEVERITY" --arg summary "$SUMMARY" --arg url "$URL" '
             {
-              "text": "🚨 New Dependabot Alert for ${{ env.PACKAGE }}",
+              "text": "🚨 New Dependabot Alert for \($package)",
               "blocks": [
                 {
                   "type": "header",
                   "text": {
                     "type": "plain_text",
-                    "text": "🚨 Dependabot Alert: ${{ env.SEVERITY }}"
+                    "text": "🚨 \($severity) Vulnerability in \($package)"
                   }
                 },
                 {
                   "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Package:*\n${{ env.PACKAGE }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Severity:*\n${{ env.SEVERITY }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Summary:*\n${{ env.SUMMARY }}"
-                    }
-                  ]
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Summary:*\n\($summary)"
+                  }
                 },
                 {
                   "type": "actions",
@@ -62,11 +59,12 @@ jobs:
                         "type": "plain_text",
                         "text": "View Alert"
                       },
-                      "url": "${{ env.URL }}"
+                      "url": $url
                     }
                   ]
                 }
               ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            }')
+
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL"
+        done
