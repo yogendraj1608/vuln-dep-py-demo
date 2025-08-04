@@ -1,59 +1,41 @@
-name: Dependabot Slack Notification
+name: Poll Dependabot Alerts to Slack
 
 on:
-  dependabot_alert:
-    types: [created, reopened]
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
-  notify-slack:
+  check-dependabot:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Call GitHub API to get open Dependabot alerts
+        id: alerts
+        run: |
+          curl -s -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/${{ github.repository }}/dependabot/alerts > alerts.json
+          cat alerts.json
+
       - name: Send Slack Notification
         uses: slackapi/slack-github-action@v1.25.0
         with:
           payload: |
             {
-              "text": "New Dependabot Alert: ${{ github.event.alert.security_advisory.summary }}",
-              "blocks": [
+              "text": "🛡️ Dependabot Alerts pulled at $(date)",
+              "attachments": [
                 {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "🚨 New Dependabot Alert"
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
+                  "color": "#FF0000",
+                  "blocks": [
                     {
-                      "type": "mrkdwn",
-                      "text": "*Repository:*\n${{ github.repository }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Severity:*\n${{ github.event.alert.security_advisory.severity }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Package:*\n${{ github.event.alert.dependency.package.name }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Vulnerability:*\n${{ github.event.alert.security_advisory.summary }}"
-                    }
-                  ]
-                },
-                {
-                  "type": "actions",
-                  "elements": [
-                    {
-                      "type": "button",
+                      "type": "section",
                       "text": {
-                        "type": "plain_text",
-                        "text": "View Alert on GitHub"
-                      },
-                      "url": "${{ github.event.alert.html_url }}",
-                      "style": "primary"
+                        "type": "mrkdwn",
+                        "text": "Open alerts fetched from GitHub. Please review."
+                      }
                     }
                   ]
                 }
