@@ -1,2 +1,2 @@
 requests==2.19.0
-flask==0.5
+flask==2.2.5
