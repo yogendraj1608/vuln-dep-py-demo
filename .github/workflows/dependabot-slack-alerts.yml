@@ -1,0 +1,63 @@
+name: Dependabot Slack Notification
+
+on:
+  dependabot_alert:
+    types: [created, reopened]
+
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "New Dependabot Alert: ${{ github.event.alert.security_advisory.summary }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚨 New Dependabot Alert"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Severity:*\n${{ github.event.alert.security_advisory.severity }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Package:*\n${{ github.event.alert.dependency.package.name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Vulnerability:*\n${{ github.event.alert.security_advisory.summary }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Alert on GitHub"
+                      },
+                      "url": "${{ github.event.alert.html_url }}",
+                      "style": "primary"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
