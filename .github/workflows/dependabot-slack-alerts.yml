@@ -1,25 +1,40 @@
 name: Dependabot Slack Notification
 
 on:
-  dependabot_alert:
-    types: [created, reopened]
+  schedule:
+    - cron: '*/5 * * * *'  # Every 15 minutes
 
 jobs:
   notify-slack:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Get Dependabot Alerts
+        id: fetch_alerts
+        run: |
+          curl -s -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/${{ github.repository }}/dependabot/alerts \
+               > alerts.json
+          echo "ALERT_COUNT=$(jq length alerts.json)" >> $GITHUB_ENV
+          echo "First_Title=$(jq -r '.[0].security_advisory.summary' alerts.json)" >> $GITHUB_ENV
+          echo "First_Severity=$(jq -r '.[0].security_advisory.severity' alerts.json)" >> $GITHUB_ENV
+          echo "First_Package=$(jq -r '.[0].dependency.package.name' alerts.json)" >> $GITHUB_ENV
+          echo "First_URL=$(jq -r '.[0].html_url' alerts.json)" >> $GITHUB_ENV
+
       - name: Send Slack Notification
+        if: env.ALERT_COUNT != '0'
         uses: slackapi/slack-github-action@v1.25.0
         with:
           payload: |
             {
-              "text": "New Dependabot Alert: ${{ github.event.alert.security_advisory.summary }}",
+              "text": "🚨 *${{ env.ALERT_COUNT }} Dependabot Alert(s) Found!*",
               "blocks": [
                 {
                   "type": "header",
                   "text": {
                     "type": "plain_text",
-                    "text": "🚨 New Dependabot Alert"
+                    "text": "🚨 Dependabot Alert Notification"
                   }
                 },
                 {
@@ -31,15 +46,15 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Severity:*\n${{ github.event.alert.security_advisory.severity }}"
+                      "text": "*Severity:*\n${{ env.First_Severity }}"
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Package:*\n${{ github.event.alert.dependency.package.name }}"
+                      "text": "*Package:*\n${{ env.First_Package }}"
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Vulnerability:*\n${{ github.event.alert.security_advisory.summary }}"
+                      "text": "*Issue:*\n${{ env.First_Title }}"
                     }
                   ]
                 },
@@ -50,10 +65,10 @@ jobs:
                       "type": "button",
                       "text": {
                         "type": "plain_text",
-                        "text": "View Alert on GitHub"
+                        "text": "View Alert"
                       },
-                      "url": "${{ github.event.alert.html_url }}",
-                      "style": "primary"
+                      "url": "${{ env.First_URL }}",
+                      "style": "danger"
                     }
                   ]
                 }
