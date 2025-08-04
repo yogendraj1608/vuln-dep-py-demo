@@ -1,41 +1,74 @@
-name: Poll Dependabot Alerts to Slack
+name: Dependabot Slack Notification
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/5 * * * *'  # Every 15 minutes
 
 jobs:
-  check-dependabot:
+  notify-slack:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Call GitHub API to get open Dependabot alerts
-        id: alerts
+      - name: Get Dependabot Alerts
+        id: fetch_alerts
         run: |
           curl -s -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
                -H "Accept: application/vnd.github+json" \
-               https://api.github.com/repos/${{ github.repository }}/dependabot/alerts > alerts.json
-          cat alerts.json
+               https://api.github.com/repos/${{ github.repository }}/dependabot/alerts \
+               > alerts.json
+          echo "ALERT_COUNT=$(jq length alerts.json)" >> $GITHUB_ENV
+          echo "First_Title=$(jq -r '.[0].security_advisory.summary' alerts.json)" >> $GITHUB_ENV
+          echo "First_Severity=$(jq -r '.[0].security_advisory.severity' alerts.json)" >> $GITHUB_ENV
+          echo "First_Package=$(jq -r '.[0].dependency.package.name' alerts.json)" >> $GITHUB_ENV
+          echo "First_URL=$(jq -r '.[0].html_url' alerts.json)" >> $GITHUB_ENV
 
       - name: Send Slack Notification
+        if: env.ALERT_COUNT != '0'
         uses: slackapi/slack-github-action@v1.25.0
         with:
           payload: |
             {
-              "text": "🛡️ Dependabot Alerts pulled at $(date)",
-              "attachments": [
+              "text": "🚨 *${{ env.ALERT_COUNT }} Dependabot Alert(s) Found!*",
+              "blocks": [
                 {
-                  "color": "#FF0000",
-                  "blocks": [
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚨 Dependabot Alert Notification"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
                     {
-                      "type": "section",
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Severity:*\n${{ env.First_Severity }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Package:*\n${{ env.First_Package }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Issue:*\n${{ env.First_Title }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
                       "text": {
-                        "type": "mrkdwn",
-                        "text": "Open alerts fetched from GitHub. Please review."
-                      }
+                        "type": "plain_text",
+                        "text": "View Alert"
+                      },
+                      "url": "${{ env.First_URL }}",
+                      "style": "danger"
                     }
                   ]
                 }
