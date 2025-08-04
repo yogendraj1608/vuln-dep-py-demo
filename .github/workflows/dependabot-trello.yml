@@ -1,0 +1,22 @@
+name: Trello Card on Dependabot Alert
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  create-card:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Trello Card from Dependabot Alert
+        run: |
+          curl -X POST "https://api.trello.com/1/cards" \
+          --header "Content-Type: application/json" \
+          --data '{
+            "name": "📦 Dependabot: ${{ github.event.pull_request.title }}",
+            "desc": "New security PR:\n${{ github.event.pull_request.html_url }}\n\nRepo: ${{ github.repository }}\nBranch: ${{ github.ref }}",
+            "idList": "${{ secrets.TRELLO_LIST_ID }}",
+            "key": "${{ secrets.TRELLO_API_KEY }}",
+            "token": "${{ secrets.TRELLO_TOKEN }}"
+          }'
